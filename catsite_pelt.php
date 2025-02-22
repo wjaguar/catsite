@@ -5,7 +5,7 @@
  * Theme interaction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.1
  * @package catsite
  */
 
@@ -40,7 +40,7 @@ class CatsitePelt
 		'init',
 		'wp_head',
 		'wp_body_open',
-		'loop_start',
+		'header_done',
 		'get_footer',
 		'wp_footer',
 		'footer_done',
@@ -83,7 +83,7 @@ class CatsitePelt
 			'LANGBOX' => [
 				'fill' => 'LANGBOX',
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				're' => '`(?=<div\s[^>]+widget-right)
 					(<div\s(?:[^<]+|<(?!/?div)|(?-1))+(?<here></div[^>]*>))`sx',
 				# To eat all the spaces before </div>, use this instead:
@@ -96,13 +96,13 @@ class CatsitePelt
 			### Chained blocks must be kept after the originator block
 			'LEFT_COLS' => [
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				're' => '`(<div\s+class="(?<here>(?:\s*col[^\s"]*(?=[\s"]))+)[^>]+>\s*
 					<div\s+class="widget-left)`sx',
 				],
 			'RIGHT_COLS' => [
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				're' => '`(<div\s+class="(?<here>(?:\s*col[^\s"]*(?=[\s"]))+)[^>]+>\s*
 					<div\s+class="widget-right)`sx',
 				],
@@ -110,7 +110,7 @@ class CatsitePelt
 			'PAGE_STEADY' => [
 				'fill' => 'PAGE_STEADY',
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				'cut' => 1,
 				're' => '`<section\s+id="flixita-page"[^<]+<div[^<]+
 					<div[^>]+(?<here>wow\s+fadeInUp)`sx',
@@ -119,7 +119,7 @@ class CatsitePelt
 			'PAGE_CONTAINER' => [
 				'fill' => 'PAGE_CONTAINER',
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				'cut' => 1,
 				're' => '`<section\s+id="flixita-page"[^>]*>\s*
 					<div\s+class="(?<here>[^"]*)"`sx',
@@ -256,7 +256,7 @@ class CatsitePelt
 		[ '@' => '*',
 			'DROP_A' => [ # Unwrap marked <a>'s in the header part
 				'start' => 'wp_body_open',
-				'stop' => 'loop_start',
+				'stop' => 'header_done',
 				'how' => 'do_drop_a',
 				],
 		],
@@ -413,7 +413,7 @@ class CatsitePelt
 			{
 				$stop = $order[$arr['where']] ?? null;
 				if (!isset($stop)) continue; # Bad block
-				$se[$stop] = (int)$se[$stop];
+				$se[$stop] = $se[$stop] ?? 0;
 				$this->done[$stop][] = $id;
 			}
 			# Field of some array
@@ -471,6 +471,20 @@ class CatsitePelt
 	}
 
 	/**
+	 * Fire an action when theme header is done with, making sure to do it
+	 * only once.
+	 *
+	 * @return void
+	 * @since  0.9.1
+	 */
+	public function header_done_now()
+	{
+		if (current_action() !== 'get_footer')
+			remove_action('get_footer', [ $this, 'header_done_now' ], -1);
+		do_action('header_done');
+	}
+
+	/**
 	 * Fire an action when 'wp_footer' is done with.
 	 *
 	 * @return void
@@ -495,6 +509,12 @@ class CatsitePelt
 		foreach (self::$actions as $n => $a)
 		{
 			if (isset($se[$n])) add_action($a, $hdl);
+		}
+		# An extra action to reliably signal end of header area
+		if (isset($se[$this->order['header_done']]))
+		{
+			add_action('loop_start', [ $this, 'header_done_now' ], -1);
+			add_action('get_footer', [ $this, 'header_done_now' ], -1);
 		}
 		# An extra action for when the very end of footer need be edited
 		if (isset($se[$this->order['footer_done']]))

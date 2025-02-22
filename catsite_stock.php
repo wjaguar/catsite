@@ -5,7 +5,7 @@
  * Page files handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.1
  * @package catsite
  */
 
@@ -26,6 +26,7 @@ class CatsiteStock
 		"default_slug" => 'beep',
 		"exact_slugs" => true,
 		"section_prefix" => '@',
+		"admin_cap" => "manage_options",
 		];
 
 	/**
@@ -77,6 +78,7 @@ class CatsiteStock
 			'LINK' => 'langlink',
 			'ID' => 'slug', # Item slug candidate (optional)
 			'CLASS' => 'string',
+			'ADMIN' => 'flag',
 			],
 		'FILL' => [
 			'THEME:' => 'themegroup',
@@ -130,7 +132,7 @@ class CatsiteStock
 	private static function prepare_link($link, $opts)
 	{
 		$url = wp_parse_url($link);
-		if (!$url) return '#'; # Bad URLs do nothing
+		if (!$url) return ''; # Make bad URLs not-links (WP removes "href=" if empty)
 		if (!empty($url['host']))
 		{
 			# Relativize, IGNORING port and protocol
@@ -360,7 +362,7 @@ class CatsiteStock
 			$item = $items[$idx - 1];
 			# Same link in same place is best match
 			if (($item->menu_order == $idx) &&
-				($item->url === ($parts[$idx - 1]['LINK'] ?? '/')))
+				($item->url === ($parts[$idx - 1]['LINK'] ?? '')))
 				$matched[$idx] = $item->db_id;
 		}
 		$stay = array_flip($matched); # item => order
@@ -374,7 +376,7 @@ class CatsiteStock
 		for ($idx = 1; $idx <= $cnt; $idx++)
 		{
 			if (isset($matched[$idx])) continue;
-			$link = $parts[$idx - 1]['LINK'] ?? '/';
+			$link = $parts[$idx - 1]['LINK'] ?? '';
 			# Same link in different place is a worse match
 			if ($by_link[$link] ?? false)
 				$matched[$idx] = array_shift($by_link[$link]);
@@ -939,7 +941,7 @@ REDO:		$pages = [];
 					'menu-item-position' => $idx,
 					'menu-item-parent-id' => $levels[0][1],
 					'menu-item-title' => "[@catsite menu $id item $idx]",
-					'menu-item-url' => $part['LINK'] ?? '/',
+					'menu-item-url' => $part['LINK'] ?? '',
 					'menu-item-classes' => $part['CLASS'] ?? null,
 					'menu-item-status' => 'publish',
 					'menu-item-type' => 'custom', # Paranoia
@@ -1302,7 +1304,7 @@ REDO:		$pages = [];
 #catsite_log("ID $what, text:\n$text\n---\n");
 		if (strpos($text, '[@catsite ') === false) return $text; # Nothing to do
 		$parts = preg_split('/\[@catsite \s*' . $cmd . '\s+(\d+)\s*\]/',
-			$text, -1, PREG_SPLIT_DELIM_CAPTURE);
+			$text, 3, PREG_SPLIT_DELIM_CAPTURE);
 		$n = count($parts);
 		if ($n < 2) return $text; # False alarm
 
@@ -1332,9 +1334,9 @@ REDO:		$pages = [];
 		$text = isset($key) ? ($vars['INIT'] ?? '') . ($vars[$key] ?? '') : '';
 		# Protect the special shortcodes
 		$text = apply_filters('catsite_protect_codes', $text);
-		for ($i = 1; $i < $n; $i += 2) $parts[$i] = $text;
-#catsite_vardump("Parts ", $parts);
 
+		$parts[1] = $text;
+#catsite_vardump("Parts ", $parts);
 		$text = implode('', $parts);
 		if ($vars && ($cmd === 'title')) return do_shortcode($text);
 		return $text; # Shortcodes in content are left to WP
@@ -1373,6 +1375,14 @@ REDO:		$pages = [];
 	}
 
 	/**
+	 * Condition flags for use in menus.
+	 *
+	 * @var   array
+	 * @since 0.9.1
+	 */
+	private $flags;
+
+	/**
 	 * Replaces 'menu N item' markers with the corresponding content.
 	 *
 	 * @param  array   $items Array of objects decorated by wp_setup_nav_menu_item().
@@ -1386,33 +1396,47 @@ REDO:		$pages = [];
 		$what = $menu->term_id;
 		if ($what && isset($this->menus[$what]))
 		{
+			if (!isset($this->flags))
+			{
+				# Set admin flag
+				$this->flags['admin'] = current_user_can(
+					$this->opts->def("admin_cap") ?? []);
+			}
+
+			$dropped = [];
+
 			$dir = trailingslashit($this->opts->get('pages_directory'));
 			$vars = self::parse_file($dir . $this->menus[$what],
 				$this->opts, self::$sections['MENU']);
 			if (!$vars) $vars = [];
 			$parts = $vars['ITEM:'] ?? [];
 
-			foreach ($items as &$item)
+			foreach ($items as $idx => $item)
 			{
 				if (strpos($item->title, '[@catsite ') === false)
 					continue; # Nothing to do
 				$r = preg_split('/\[@catsite \s*menu\s+\d+\s+item\s+(\d+)\s*\]/',
-					$item->title, -1, PREG_SPLIT_DELIM_CAPTURE);
+					$item->title, 3, PREG_SPLIT_DELIM_CAPTURE);
 				$n = count($r);
 				if ($n < 2) continue; # False alarm (wrong command)
 
-				for ($i = 1; $i < $n; $i += 2)
+				$part = $parts[(int)$r[1] - 1] ?? [];
+				if ($dropped[(int)$item->menu_item_parent] || # In a hidden subtree
+					# Conditional - only for admins
+					(isset($part['ADMIN']) && !$this->flags['admin']))
 				{
-					$part = $parts[(int)$r[$i] - 1] ?? [];
-					# Protect the special shortcodes
-					$r[$i] = apply_filters('catsite_protect_codes',
-						$part['TITLE'] ?? '');
+					$dropped[$item->ID] = true;
+					unset($items[$idx]);
+					continue;
 				}
+
+				# Protect the special shortcodes
+				$r[1] = apply_filters('catsite_protect_codes',
+					$part['TITLE'] ?? '');
 				$item->title = do_shortcode(implode('', $r));
 				# Links need updating in case they depend on language
 				if (isset($part['LINK'])) $item->url = $part['LINK'];
 			}
-			unset($item); # Paranoia
 		}
 
 		return $items;

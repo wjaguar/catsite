@@ -5,7 +5,7 @@
  * Access restriction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.1
  * @package catsite
  */
 
@@ -41,10 +41,11 @@ class CatsiteLock
 		"admin_cap" => "manage_options",
 		"admin_ssl" => true,
 		# Disable various unneeded things
+		"version" => false,
 		"xmlrpc" => false,
 		"rest" => false,
 		"feed" => false,
-		"version" => false,
+		"archive" => false,
 		];
 
 	/**
@@ -146,9 +147,8 @@ class CatsiteLock
 		/* The REST fence */
 		if (!($opts->def("rest") ?? false))
 			add_filter('rest_authentication_errors', [ $this, 'auth_em' ], PHP_INT_MAX);
-		/* The feeds disable */
-		if (!($opts->def("feed") ?? false))
-			add_filter('pre_handle_404', [ $this, 'starve_em' ], 10, 2);
+		/* Disable feeds and suchlike */
+		add_filter('pre_handle_404', [ $this, 'starve_em' ], 10, 2);
 		/* Remove various things from <head> */
 		add_action('wp_loaded', [ $this, 'hide_em' ]);
 		/* Remove page indices from <body> */
@@ -281,9 +281,21 @@ class CatsiteLock
 	{
 		global $wp;
 
-#catsite_vardump("query", $query);
-		if ($skip || !$query->is_feed())
+		if ($skip) return $skip; # Not to handle here
+		while (true)
+		{
+			$opts = $this->opts;
+			# Feeds are off by default
+			if ($query->is_feed() &&
+				!($opts->def("feed") ?? false)) break;
+			# Various archives are off by default
+			# (including taxonomies, categories, and tags)
+			if ($query->is_archive() &&
+				!($opts->def("archive") ?? false)) break;
+			# Builtin search cannot display *.page properly
+			if ($query->is_search()) break;
 			return $skip; # Not to handle here
+		}
 		$wp->set_query_var('error', '404'); # THE decisive marker
 		$query->is_feed = false; # Also necessary
 		$query->set_404();
