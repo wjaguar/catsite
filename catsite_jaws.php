@@ -5,7 +5,7 @@
  * Custom data tables handling and generic macro substitutions.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.2
  * @package catsite
  */
 
@@ -1142,7 +1142,7 @@ class CatsiteJaws
 			$arr = [];
 			foreach ($slots as $v)
 				if (strlen($v)) $arr[] = preg_quote($v, '/');
-			if ($arr) $split = '/(' . implode('|', $slots) . ')/';
+			if ($arr) $split = '/(' . implode('|', $arr) . ')/';
 		}
 		# The replacement
 		$var = $attrs['var'] ?? null;

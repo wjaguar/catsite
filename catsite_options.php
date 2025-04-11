@@ -5,7 +5,7 @@
  * Data exchange module.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.2
  * @package catsite
  */
 
@@ -85,6 +85,17 @@ class CatsiteOptions
 		foreach ($keys as $key)
 			$res[] = $this->defs[$key] ?? null;
 		return $res;
+	}
+
+	/**
+	 * Get all the settings.
+	 *
+	 * @return array A copy of the settings hash.
+	 * @since  0.9.2
+	 */
+	public function alldefs()
+	{
+		return $this->defs ?? [];
 	}
 
 	/**

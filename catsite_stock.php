@@ -5,7 +5,7 @@
  * Page files handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.1
+ * @version 0.9.2
  * @package catsite
  */
 
@@ -54,6 +54,14 @@ class CatsiteStock
 	const DRAFTS = ' DRAFTS ';
 
 	/**
+	 * Attachments list
+	 *
+	 * @var   string
+	 * @since 0.9.2
+	 */
+	const ATTACH = ' ATTACH ';
+
+	/**
 	 * All of page file sections.
 	 *
 	 * @var   array
@@ -67,6 +75,7 @@ class CatsiteStock
 			'CSS' => 'block',
 			'JS' => 'block',
 			'INIT' => 'block',
+			'FULLTITLE' => 'lang',
 			'TITLE' => 'lang',
 			'TEXT' => 'langb',
 			],
@@ -82,6 +91,7 @@ class CatsiteStock
 			],
 		'FILL' => [
 			'THEME:' => 'themegroup',
+			'SITELOGO' => 'attach',
 			],
 		'FILL*' => [
 			'CSS' => 'block',
@@ -200,6 +210,7 @@ class CatsiteStock
 		$top = [];
 		$res = [];
 		$where = null;
+		$attach = null;
 		$theme = '*';
 		$ltags = [];
 		$lang = '.' . $opts->def('lang');
@@ -269,6 +280,19 @@ class CatsiteStock
 					(in_array('*', $theme, true) ? '*' : '');
 				if ($init) $value = $theme;
 				break;
+			case 'attach': # Collect or remap attachments
+				if ($init) # On init, collect
+				{
+					if (!isset($res[self::ATTACH]))
+						$res[self::ATTACH] = [];
+					$res[self::ATTACH][$v] = ($res[self::ATTACH][$v] ?? 0) + 1;
+				}
+				else # On main pass, remap
+				{
+					if (!isset($attach)) $attach = $opts->get('attached') ?? [];
+					$v = $attach[$v] ?? 0;
+				}
+				break;
 			case 'langb':
 				# '*'-tagged blocks are for all languages
 				# No tag, empty tag, '.*whatever' mean the same
@@ -283,7 +307,7 @@ class CatsiteStock
 					$ltags[$skey] = $a;
 				}
 				# Join relevant blocks together
-				if ($a[$tag]) $res[$skey] = ($res[$skey] ?? '') . $v . "\n";
+				if (!empty($a[$tag])) $res[$skey] = ($res[$skey] ?? '') . $v . "\n";
 				$value = 1; # Just to keep the tagged key
 				break;
 			case 'lang':
@@ -299,7 +323,7 @@ class CatsiteStock
 					$ltags[$skey] = $a;
 				}
 				# Current language overwrites the value
-				if ($a[$tag])
+				if (!empty($a[$tag]))
 				{
 					if ($kind === 'langlink') $v = self::prepare_link($v, $opts);
 					$res[$skey] = $v;
@@ -378,7 +402,7 @@ class CatsiteStock
 			if (isset($matched[$idx])) continue;
 			$link = $parts[$idx - 1]['LINK'] ?? '';
 			# Same link in different place is a worse match
-			if ($by_link[$link] ?? false)
+			if (!empty($by_link[$link]))
 				$matched[$idx] = array_shift($by_link[$link]);
 		}
 		$stay = array_flip($matched); # item => order
@@ -401,7 +425,7 @@ class CatsiteStock
 	 * Gets post essentials.
 	 *
 	 * @param  int $id The post ID.
-	 * @return array Post essentials: ID, slug, parent / empty on failure
+	 * @return array Post essentials: ID, slug, parent / empty on failure.
 	 * @since  0.1.0
 	 */
 	public static function locate_post($id)
@@ -453,7 +477,7 @@ class CatsiteStock
 	 * @param  string          $name  The filename and path.
 	 * @param  \array          $have  Array of path => ID mappings.
 	 * @param  \CatsiteOptions $opts  The values for various things.
-	 * @return int The ID of the post, or 0 on failure.
+	 * @return array Post essentials: ID, slug, parent / empty on failure.
 	 * @since  0.1.0
 	 */
 	private static function ensure_post($name, &$have, $opts)
@@ -532,7 +556,7 @@ class CatsiteStock
  				else # Fail on conflict
 		 		{
 					$opts->error("The $what could not get the slug '$slug'");
- 					return false;
+ 					return [];
  				}
 				$slug = $slug2;
 			}
@@ -546,7 +570,7 @@ class CatsiteStock
 				if (!$id)
 				{
 					$opts->error("Could not create a post for the $what");
-					return false;
+					return [];
 				}
 				$opts->push(self::DRAFTS, $id); # Remember, in case it lingers
 			}
@@ -562,14 +586,15 @@ class CatsiteStock
 			if (!$id)
 			{
 				$opts->error("Could not setup the path node for the $what");
-				return false;
+				return [];
 			}
+			$opts->drop(self::DRAFTS, $id); # A draft no more
 			$have[$item] = $id;
 			$opts->set('pages_added', $have); # Remember
 			$parent = $id;
 		}
 
-		return false; # Paranoia
+		return []; # Paranoia
 	}
 
  	/**
@@ -623,6 +648,7 @@ class CatsiteStock
 		$opts->add('pages_added', []);
 		$opts->add('paged', []);
 		$opts->add('fill_info', []);
+		$opts->add('attached', []);
 
 		/* Set up proper permalinks */
 		if (!got_url_rewrite())
@@ -753,15 +779,15 @@ REDO:		$pages = [];
 
 			# Reapply the page's options
 
-			if ($parts['MAIN'] ?? false) # Make it the front page
+			if (!empty($parts['MAIN'])) # Make it the front page
 			{
 				update_option('show_on_front', 'page');
 				update_option('page_on_front', $id);
 			}
 			# Allow/disallow it accept page number
-			if ($parts['PAGED'] ?? false) $paged[$id] = true;
+			if (!empty($parts['PAGED'])) $paged[$id] = true;
 			# Allow/disallow it accept search key
-			if ($parts['KEYED'] ?? false) $keyed[$id] = true;
+			if (!empty($parts['KEYED'])) $keyed[$id] = true;
 
 			# Trace the page's path
 			$path = $name;
@@ -770,8 +796,8 @@ REDO:		$pages = [];
 				$p = strrpos($path, '/', -2);
 				if ($p === false) break; # Not in subdir
 				$path = substr($path, 0, $p + 1);
-				if ($pages[$path] ?? false) continue; # Already traced
-				if ($have[$path] ?? false)
+				if (!empty($pages[$path])) continue; # Already traced
+				if (!empty($have[$path]))
 				{
 					$pages[$path] = $have[$path];
 
@@ -780,7 +806,7 @@ REDO:		$pages = [];
 					$id = $have[$key] ?? 0;
 					# Due to depth-sorting, all existing pages
 					# on this level are already in $pages[]
-					if ($id && !($pages[$key] ?? false))
+					if ($id && empty($pages[$key]))
 					{
 						# Rewrite it into a path node
 						$id = self::make_node(self::locate_post($id), $path, $opts);
@@ -996,6 +1022,7 @@ REDO:		$pages = [];
 		/* Check */
 		$group1 = [];
 		$group2 = [];
+		$attach = [];
 		foreach ($files as $name)
 		{
 			# Skip dirs and unreadable things
@@ -1007,11 +1034,105 @@ REDO:		$pages = [];
 			$parts = self::parse_file($dir . $name, $opts,
 				self::$sections['FILL'], true);
 			if (!$parts) continue; # Failed or mismatched
+			if (isset($parts[self::ATTACH]))
+				$attach[] = $parts[self::ATTACH]; # Collect
 			$v = $parts['THEME:'] ?? '*'; # Paranoia
 			if ($v === '*') $group1[] = $name; # Generic
 			else $group2[] = $name; # Specific
 		}
+		if ($attach) self::reattach($opts,
+			array_keys(call_user_func_array('array_replace', $attach)));
 		$opts->set('fill_info', array_merge($group1, $group2));
+	}
+
+	/**
+	 * (Re)anchor the listed files into DB as attachments.
+	 *
+	 * @param  array $opts   The values for various things.
+	 * @param  array $attach The (supposed) filenames.
+	 * @return void
+	 * @since  0.9.2
+	 */
+	private static function reattach($opts, $attach)
+	{
+		$have = $opts->get('attached') ?? [];
+		$want = $good = [];
+
+		$dir = $_SERVER['DOCUMENT_ROOT'];
+		foreach ($attach as $name)
+		{
+			$nf = $dir . $name;
+			if (!is_readable($nf)) continue; # No such thing; log a warning
+			if (!empty($have[$name])) $good[$name] = $have[$name];
+			else $want[$name] = 1;
+		}
+		$attach = array_keys($want); # What still need a place
+		$wait = [];
+		foreach ($have as $name => $id)
+			if (empty($good[$name])) $wait[] = $id; # For reuse/free
+		# Try placing the new files in unused posts first, then in new ones
+		while ($attach)
+		{
+			$res = wp_check_filetype($name);
+
+			$name = $attach[count($attach) - 1];
+			$slug = self::slugify('_attached_' . $name, $opts);
+			$id0 = $wait ? $wait[count($wait) - 1] : 0;
+			$how = [
+				'ID' => $id0,
+				'post_name' => $slug,
+				'post_title' => wp_basename($name),
+				'meta_input' => [ 'catsite_attach' => $name ],
+				'post_content' => "[@catsite hidden]",
+				'post_mime_type' => $res['type'],
+				'comment_status' => 'closed',
+				'ping_status' => 'closed',
+				];
+			$id = wp_insert_attachment($how, $name, 0, false, false);
+			if ($id) # Done
+			{
+				$good[$name] = $id;
+				array_pop($attach);
+				if ($id0) array_pop($wait);
+			}
+			elseif ($id0) # Could not reuse - delete and repeat w/another
+			{
+    				wp_delete_post($id0, true);
+				array_pop($wait);
+
+			}
+			else # Could not create - report error
+			{
+				$opts->error("Could not attach the $name");
+				array_pop($attach);
+			}
+
+		}
+		# All done, save the new mapping
+		$opts->set('attached', $good);
+	}
+
+	/**
+	 * Page ID to (fake) attachments mapping.
+	 *
+	 * @var   array
+	 * @since 0.9.2
+	 */
+	private $attach;
+
+	/**
+	 * Fix pseudo-attachments' URLs, to let them sit anywhere.
+	 *
+	 * @param  string $url URL for the attachment.
+	 * @param  int    $id  Attachment post ID.
+	 * @return string Replaced (or not) URL.
+	 * @since  0.9.2
+	 */
+	public function fix_attach($url, $id)
+	{
+		if (isset($this->attach[$id]))
+			$url = $this->attach[$id]; # It is a relative URL now
+		return $url;
 	}
 
 	/**
@@ -1078,6 +1199,9 @@ REDO:		$pages = [];
 			if (!isset($this->pages[$id]))
 				$this->nodes[$id] = $name;
 		}
+		$this->attach = [];
+		foreach ($opts->get('attached') ?? [] as $name => $id)
+			$this->attach[$id] = $name;
 #catsite_vardump("stock", $this);
 
 		$this->set_filters();
@@ -1121,7 +1245,7 @@ REDO:		$pages = [];
 			$vars = array_splice($tail, $idx);
 
 			# Try accepting last part as number
-			if ($paged[$prev] ?? false)
+			if (!empty($paged[$prev]))
 			{
 				$last = array_pop($vars);
 				$v = strspn($last, '0123456789');
@@ -1129,7 +1253,7 @@ REDO:		$pages = [];
 				else $vars[] = $last;
 			}
 			# Try accepting everything else as (urlencoded) string
-			if ($vars && ($keyed[$prev] ?? false))
+			if ($vars && !empty($keyed[$prev]))
 			{
 				$opts->redef('_key', $v1 = implode('/', $vars));
 				$vars = [];
@@ -1179,6 +1303,9 @@ REDO:		$pages = [];
 		add_filter('wp_get_nav_menu_items', [ $this, 'do_menu_replace' ], -1, 3);
 		# And whatever other places can hit the insertion markers
 
+		/* The full title filter */
+		add_filter('document_title', [ $this, 'full_title_replace' ], -1);
+
 		/* The page-catching filter */
 		add_filter('pre_handle_404', [ $this, 'get_page' ], 10, 2);
 
@@ -1187,6 +1314,9 @@ REDO:		$pages = [];
 
 		/* The CSS and JS emitter */
 		add_action('wp_head', [ $this, 'add_css_js' ], PHP_INT_MAX);
+
+		/* Let pseudo-attachments live anywhere at all*/
+		add_filter('wp_get_attachment_url', [ $this, 'fix_attach' ],  PHP_INT_MAX, 2);
 	}
 
 	/**
@@ -1245,6 +1375,10 @@ REDO:		$pages = [];
 				$opts->redef('page_CSS', $vars['CSS'] . "\n");
 			if (!empty($vars['JS']))
 				$opts->redef('page_JS', $vars['JS'] . "\n");
+
+			# Remember whether the page wants full custom title
+			if (!empty($vars['FULLTITLE']))
+				$opts->redef('page_title', $vars['FULLTITLE']);
 
 			# See which languages the page has
 			$def = $opts->def('default_lang');
@@ -1421,7 +1555,7 @@ REDO:		$pages = [];
 				if ($n < 2) continue; # False alarm (wrong command)
 
 				$part = $parts[(int)$r[1] - 1] ?? [];
-				if ($dropped[(int)$item->menu_item_parent] || # In a hidden subtree
+				if (!empty($dropped[(int)$item->menu_item_parent]) || # In a hidden subtree
 					# Conditional - only for admins
 					(isset($part['ADMIN']) && !$this->flags['admin']))
 				{
@@ -1443,10 +1577,26 @@ REDO:		$pages = [];
 	}
 
 	/**
+	 * Replaces the entire page title if requested.
+	 *
+	 * @param  string $title Document title.
+	 * @return string The modified (or not) title.
+	 * @since  0.9.2
+	 */
+	public function full_title_replace($title)
+	{
+		$t = $this->opts->def('page_title');
+		if (!isset($t)) return $title;
+		# Protect the special shortcodes
+		$t = apply_filters('catsite_protect_codes', $t);
+		return do_shortcode($t);
+	}
+
+	/**
 	 * Adds values from *.fill files to the items.
 	 *
-	 * @param  array   $where Array of arrays keyed by value IDs.
-	 * @return array   The modified (or not) array.
+	 * @param  array $where Array of arrays keyed by value IDs.
+	 * @return array The modified (or not) array.
 	 * @since  0.1.0
 	 */
 	public function fill_values($where)

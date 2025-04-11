@@ -5,7 +5,7 @@
  * Access restriction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.1
+ * @version 0.9.2
  * @package catsite
  */
 
@@ -38,6 +38,8 @@ class CatsiteLock
 		"site_entity" => null,
 		"site_admin" => null,
 		"admin_port" => null,
+		"admin_host" => null,
+		"admin_hostpart" => null,
 		"admin_cap" => "manage_options",
 		"admin_ssl" => true,
 		# Disable various unneeded things
@@ -46,6 +48,7 @@ class CatsiteLock
 		"rest" => false,
 		"feed" => false,
 		"archive" => false,
+		"guess" => false,
 		];
 
 	/**
@@ -75,21 +78,43 @@ class CatsiteLock
 	{
 		$this->opts = $opts = CatsiteOptions::update($opts, self::$defaults);
 #catsite_vardump("opts", $this->opts);
+		$opts = $opts->alldefs();
 
 		$how = $this->host_header();
-		$admin = (empty($opts->def("site_entity")) ||
-				($opts->def("site_entity") === $how['entity'])) &&
-			(empty($opts->def("site_admin")) ||
-				($opts->def("site_admin") === $how['unit'])) &&
-			(empty($opts->def("admin_port")) ||
-				($opts->def("admin_port") === $how['port'])) &&
-			(!$opts->def("admin_ssl") || $how['ssl']);
+		$admin = (empty($opts["site_entity"]) ||
+				($opts["site_entity"] === $how['entity'])) &&
+			(empty($opts["site_admin"]) ||
+				($opts["site_admin"] === $how['unit'])) &&
+			(!($opts["admin_ssl"] ?? false) || $how['ssl']);
+
+		if (!$admin); # Failed already
+		# Require the (nonstandard) port to match
+		elseif (!empty($opts["admin_port"]))
+			$admin = $opts["admin_port"] === $how['port'];
+		# Require the entire hostname to match
+		elseif (!empty($opts["admin_host"]))
+			$admin = $opts["admin_host"] === $how['host'];
+		# Require a matching substring in the hostname
+		elseif (!empty($opts["admin_hostpart"]))
+		{
+			$parts = explode(' ', $opts["admin_hostpart"]);
+			$str = '^' . $how['host'] . '$';
+			$admin = false;
+			foreach ($parts as $part)
+			{
+				if (!strlen($part)) continue;
+				if (strpos($str, $part) === false) continue;
+				$admin = true;
+				break;
+			}
+		}
+
 		if ($admin) $this->acc = 'admin';
-		else $this->caps[] = $opts->def("admin_cap") ?? [];
+		else $this->caps[] = $opts["admin_cap"] ?? [];
 #catsite_vardump("connection", $how);
 #catsite_vardump("lock", $this);
 
-		$this->set_filters($opts);
+		$this->set_filters($this->opts);
 	}
 
 	/**
@@ -114,6 +139,7 @@ class CatsiteLock
 			"unit" => $_SERVER['SSL_CLIENT_S_DN_OU'] ?? '',
 			"port" => $port,
 			"ssl" => $ssl,
+			"host" => $h,
 			];
 		return $res;
 	}
@@ -138,6 +164,9 @@ class CatsiteLock
 			add_filter('script_loader_src', $hdl);
 			add_filter('style_loader_src', $hdl);
 		}
+		/* Stop guessing pages */
+		if (!($opts->def("guess") ?? false))
+			add_filter('do_redirect_guess_404_permalink', '__return_false');
 		/* The XML-RPC disable */
 		if (!($opts->def("xmlrpc") ?? false))
 		{

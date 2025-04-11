@@ -3,7 +3,7 @@
  * Plugin Name:		catsite
  * Plugin URI:		https://github.com/wjaguar/catsite
  * Description:		This plugin provides component parts for a cat site
- * Version:		0.9.1
+ * Version:		0.9.2
  * Author:		wjaguar
  * Author URI:		https://github.com/wjaguar
  * License:		GPLv3 or later

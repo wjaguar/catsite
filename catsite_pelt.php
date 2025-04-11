@@ -5,7 +5,7 @@
  * Theme interaction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.1
+ * @version 0.9.2
  * @package catsite
  */
 
@@ -72,6 +72,11 @@ class CatsitePelt
 				'kind' => 'lang',
 				'opt' => 'blogdescription',
 				],
+			'SITELOGO' => [
+				'fill' => 'SITELOGO',
+				'kind' => 'attach',
+				'mod' => 'custom_logo',
+				],
 			'HEADER_IMAGE' => [
 				'fill' => 'HEADER_IMAGE',
 				'kind' => 'lang',
@@ -92,6 +97,20 @@ class CatsitePelt
 #					'LEFT_COLS' => 'col-lg-6 col-12',
 					'RIGHT_COLS' => 'nopad col-lg-5 col-12',
 					],
+				],
+			# To insert a language chooser into the header after the desktop menu
+			'LANGBOX2D' => [
+				'fill' => 'LANGBOX2',
+				'start' => 'wp_body_open',
+				'stop' => 'header_done',
+				're' => '`<div\sclass="main-menu-right">(?<here>)`sx',
+				],
+			# To insert another language chooser into the header before the mobile menu
+			'LANGBOX2M' => [
+				'fill' => 'LANGBOX2',
+				'start' => 'wp_body_open',
+				'stop' => 'header_done',
+				're' => '`(?<here>)<div\s+class="menu-collapse-wrap">`sx',
 				],
 			### Chained blocks must be kept after the originator block
 			'LEFT_COLS' => [
@@ -123,6 +142,24 @@ class CatsitePelt
 				'cut' => 1,
 				're' => '`<section\s+id="flixita-page"[^>]*>\s*
 					<div\s+class="(?<here>[^"]*)"`sx',
+				],
+			# To change the Bootstrap class that controls logo width
+			'LOGO_CONTAINER' => [
+				'fill' => 'LOGO_CONTAINER',
+				'start' => 'wp_body_open',
+				'stop' => 'header_done',
+				'cut' => 1,
+				're' => '`<div\s+class="(?<here>[^"]*)"[^<]+
+					<div\s+class="logo">`sx',
+				],
+			# To change the Bootstrap class that controls navbar width
+			'NAVBAR_CONTAINER' => [
+				'fill' => 'NAVBAR_CONTAINER',
+				'start' => 'wp_body_open',
+				'stop' => 'header_done',
+				'cut' => 1,
+				're' => '`<div\s+class="(?<here>[^"]*)"[^<]+
+					<nav\s+class="navbar-area">`sx',
 				],
 			# To change the Bootstrap class that controls max footer blocks
 			'FOOT2_BLOCKS' => [
@@ -181,13 +218,18 @@ class CatsitePelt
 				],
 			'TEXT1_TEXT' => [
 				'fill' => 'TEXT1_TEXT',
-				'kind' => 'lang',
+				'kind' => 'langb',
 				'field' => [ 'TEXTW:', 1, 'text' ],
 				],
 			'TEXT2_NAME' => [
 				'fill' => 'TEXT2_NAME',
 				'kind' => 'lang',
 				'field' => [ 'TEXTW:', 2, 'title' ],
+				],
+			'TEXT2_TEXT' => [
+				'fill' => 'TEXT2_TEXT',
+				'kind' => 'langb',
+				'field' => [ 'TEXTW:', 2, 'text' ],
 				],
 			'CAT1_OFF' => [
 				'fill' => 'CAT1_OFF',
