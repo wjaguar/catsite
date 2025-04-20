@@ -5,7 +5,7 @@
  * Data exchange module.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.2
+ * @version 0.9.3
  * @package catsite
  */
 
@@ -151,6 +151,21 @@ class CatsiteOptions
 		$v = $this->defs[$key] ?? null;
 		if (!is_array($v)) $this->defs[$key] = isset($v) ? [ $v ] : [];
 		$this->defs[$key][] = $value;
+	}
+
+	/**
+	 * Merge an array of values into a setting, converting it to array if needed.
+	 *
+	 * @param  string $key The setting's key.
+	 * @param  array  $arr The array to merge.
+	 * @return void
+	 * @since  0.9.3
+	 */
+	public function merge($key, $arr)
+	{
+		$v = $this->defs[$key] ?? null;
+		if (!is_array($v)) $v = isset($v) ? [ $v ] : [];
+		$this->defs[$key] = array_merge($v, $arr);
 	}
 
 	/**

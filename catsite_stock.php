@@ -5,7 +5,7 @@
  * Page files handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.2
+ * @version 0.9.3
  * @package catsite
  */
 
@@ -23,6 +23,7 @@ class CatsiteStock
 		"page_ext" => '.page',
 		"menu_ext" => '.menu',
 		"fill_ext" => '.fill',
+		"part_ext" => '.part',
 		"default_slug" => 'beep',
 		"exact_slugs" => true,
 		"section_prefix" => '@',
@@ -78,6 +79,11 @@ class CatsiteStock
 			'FULLTITLE' => 'lang',
 			'TITLE' => 'lang',
 			'TEXT' => 'langb',
+			'GROUP:' => 'group',
+			'NOGROUP:' => 'nogroup',
+			'LOAD' => 'import',
+			'USE' => 'expand',
+			'REDIR' => 'langlink',
 			],
 		'MENU' => [
 			'PLACES' => 'list', # Choice of menu locations
@@ -96,6 +102,7 @@ class CatsiteStock
 		'FILL*' => [
 			'CSS' => 'block',
 			'JS' => 'block',
+			'CSSFILE' => 'item',
 			],
 		];
 
@@ -114,6 +121,14 @@ class CatsiteStock
 	 * @since 0.1.0
 	 */
 	const mergeable = [ 'lang' => 1, 'langb' => 1, 'block' => 1 ];
+
+	/**
+	 * Which section types can assemble from parts.
+	 *
+	 * @var   array
+	 * @since 0.9.3
+	 */
+	const collectable = [ 'langb' => 1, 'block' => 1 ];
 
 	/**
 	 * Convert a string into a slug candidate.
@@ -207,6 +222,7 @@ class CatsiteStock
 
 		# Process the parts
 		$now = '';
+		$slot = '';
 		$top = [];
 		$res = [];
 		$where = null;
@@ -250,15 +266,61 @@ class CatsiteStock
 			$value = null;
 			switch ($kind)
 			{
+			case 'nogroup': # Done with a set of fields
+				$v = '';
+				# Fallthrough
 			case 'stack': # Multiple sets of fields
+			case 'group': # Multiple named sets of fields
 				if (empty($now)) $top = $res;
-				else if ($res)
+				elseif ($res)
 				{
 					if (!isset($top[$now])) $top[$now] = [];
-					$top[$now][] = $res;
+					if (empty($slot)) $top[$now][] = $res;
+					else $top[$now][$slot] = $res;
 				}
-				$now = $key;
-				$res = [];
+				if ($kind === 'stack') # Stacked group
+				{
+					$now = $key;
+					$slot = '';
+					$res = [];
+				}
+				elseif (!empty($v)) # Named group
+				{
+					$now = $key;
+					$slot = $v;
+					$res = $top[$now][$slot] ?? [];
+				}
+				else # Nogroup/unnamed group - return to outer context
+				{
+					$now = $slot = '';
+					$res = $top;
+					$top = [];
+				}
+				continue 2;
+			case 'expand': # Repeat fields of a named group at this point
+				$what = $res['GROUP:'][$v] ?? [];
+				foreach ($what as $xkey => $xdata)
+				{
+					# A parsed group has de-tagging done already
+					$xkind = $sec[$xkey] ?? null;
+					if (isset(self::collectable[$xkind]))
+						$xdata = ($res[$xkey] ?? '') . $xdata . "\n";
+					# No collectable-array fields in PAGE, no need to handle 'em
+					$res[$xkey] = $xdata;
+				}
+				continue 2;
+			case 'import': # Add named groups from another file (pagedir relative)
+				$what = false;
+				$canload = $canload ?? array_flip($opts->get('can_load', []));
+				if (isset($canload[$v]))
+				{
+					$dir = $dir ?? trailingslashit($opts->get('pages_directory'));
+					$what = self::parse_file($dir . $v, $opts, $sec, $init);
+				}
+				if ($what) $res['GROUP:'] = ($res['GROUP:'] ?? []) +
+					($what['GROUP:'] ?? []);
+				elseif ($init)
+					$opts->error("Could not import the file '$v'");
 				continue 2;
 			case 'bool':
 				if ($init) $value = in_array(strtolower($v),
@@ -345,14 +407,27 @@ class CatsiteStock
 			case 'unlist':
 				$value = 1; # Merely a flag
 				break;
+			case 'item':
+				$value = $res[$key] ?? [];
+				$value[] = $v;
+				break;
+			case 'pair':
+				$value = $res[$key] ?? [];
+				if ($v === '') break;
+				$b = strstr("$v ", ' => ', true);
+				if ($b === false) $b = $v;
+				$v = (string)substr($v, strlen($b) + 3);
+				$value[trim($b)] = trim($v);
+				break;
 			}
 			if (!$init) $value = $value ?? $v;
 			$res[$key] = $value;
 		}
-		if ($now && $res)
+		if ($now && $res) # Close the final group
 		{
 			if (!isset($top[$now])) $top[$now] = [];
-			$top[$now][] = $res;
+			if (empty($slot)) $top[$now][] = $res;
+			else $top[$now][$slot] = $res;
 		}
 		if ($top) $res = $top;
 		if (!$res)
@@ -551,7 +626,7 @@ class CatsiteStock
 			{
 				if (empty($slug)) # Unusable filename/dirname
 					$opts->warn("The $what had to go by the default slug '$slug2'");
- 				else if (!$opts->def("exact_slugs")) # Can haz tail
+ 				elseif (!$opts->def("exact_slugs")) # Can haz tail
 					$opts->warn("The $what had to go by the slug '$slug2'");
  				else # Fail on conflict
 		 		{
@@ -645,6 +720,7 @@ class CatsiteStock
 
 		/* Add the required class options to WordPress */
 		$opts->add('pages_directory', $opts->def("page_dir"));
+		$opts->add('can_load', []);
 		$opts->add('pages_added', []);
 		$opts->add('paged', []);
 		$opts->add('fill_info', []);
@@ -704,7 +780,7 @@ class CatsiteStock
 			{
 				if (substr($name, -$lx) === $page_ext)
 					wp_delete_post($id, true);
-				else if (substr($name, -1) === '/')
+				elseif (substr($name, -1) === '/')
 					wp_delete_post($id, true);
 				else $pages[$name] = $id;
 			}
@@ -730,6 +806,20 @@ class CatsiteStock
 		}
 		sort($pages); # Arrays are sorted by length then by values in order
 		$files = array_map(function($v) { return $v[count($v) - 1]; }, $pages);
+
+		/* Collect the include files */
+		$inc = catsite_rglob($dir, '*' . $opts->def("part_ext"), GLOB_MARK);
+		/* Clean up them too */
+		$pages = $files;
+		foreach ($inc as $name)
+		{
+			# Skip dirs and unreadable things
+			if (!is_file($name)) continue;
+			# Relativize & sanitize
+			$pages[] = str_replace('\\', '/', substr($name, $ldir));
+		}
+		/* Remember what can be included */
+		$opts->set('can_load', $pages);
 
 		/* Check */
 		$badtimes = 0;
@@ -846,7 +936,7 @@ REDO:		$pages = [];
 			foreach ($there as $name)
 			{
 				if (strncmp($name, $lost, $l) === 0); # Lost with the dir
-				else if ($bad[$name]) $l = strlen($lost = $name); # New lost dir
+				elseif ($bad[$name]) $l = strlen($lost = $name); # New lost dir
 				else continue; # Leave be
 				unset($pages[$name]); # Prune
 			}
@@ -1190,7 +1280,7 @@ REDO:		$pages = [];
 		{
 			if (substr($name, -1) === '/')
 				$nodes[$id] = $name;
-			else if (substr($name, -$lx) === $menu_ext)
+			elseif (substr($name, -$lx) === $menu_ext)
 				$this->menus[$id] = $name;
 			else $this->pages[$id] = $name;
 		}
@@ -1370,6 +1460,13 @@ REDO:		$pages = [];
 			$vars = self::parse_file($dir . $this->pages[$id],
 				$opts, self::$sections['PAGE']);
 
+			# See if the page is a redirect
+			if (strlen($vars['REDIR'] ?? ''))
+			{
+				wp_redirect($vars['REDIR']);
+				exit;
+			}
+
 			# Queue page's CSS and JS
 			if (!empty($vars['CSS']))
 				$opts->redef('page_CSS', $vars['CSS'] . "\n");
@@ -1403,21 +1500,32 @@ REDO:		$pages = [];
 	{
 		$opts = $this->opts;
 
+		$type = 'type="text/css"';
+		if (current_theme_supports('html5', 'style')) $type = '';
+
+		$cssfiles = $opts->def('fill_CSS_files') ?? []; # Only the fill, for now
+		$n = 1;
+		foreach ($cssfiles as $css)
+		{
+			if (empty($css)) continue;
+			$id = 'id="catsite-css-file-' . (string)$n++ . '"';
+			echo '<link rel="stylesheet" ' . $id .
+				' href="' . esc_url($css) . '" ' . $type . "/>\n";
+		}
+
 		$css = strip_tags(				# Mistakes happen
 			($opts->def('CSS') ?? '') .		# Generic first
-			($opts->def('page_CSS') ?? '') .	# Page second
-			($opts->def('fill_CSS') ?? ''));	# Fill last
+			($opts->def('fill_CSS') ?? '') .	# Fill second
+			($opts->def('page_CSS') ?? ''));	# Page last
 		if (!empty($css))
 		{
 			$id = 'id="catsite-css"';
-			$type = 'type="text/css"';
-			if (current_theme_supports('html5', 'style')) $type = '';
 			echo "<style $type $id>\n$css\n</style>\n";
 		}
 
 		$js = 	($opts->def('JS') ?? '') .	# Generic first
-			($opts->def('page_JS') ?? '') .	# Page second
-			($opts->def('fill_JS') ?? '');	# Fill last
+			($opts->def('fill_JS') ?? '') .	# Fill second
+			($opts->def('page_JS') ?? '');	# Page last
 		if (!empty($js))
 		{
 			wp_print_inline_script_tag($js, [ 'id' => "catsite-js" ]);
@@ -1644,6 +1752,8 @@ REDO:		$pages = [];
 #catsite_vardump("Where", $where);
 
 		# Queue the CSS and JS
+		if (!empty($res['CSSFILE']))
+			$opts->merge('fill_CSS_files', $res['CSSFILE']);
 		if (!empty($res['CSS']))
 			$opts->redef('fill_CSS', $res['CSS'] . "\n");
 		if (!empty($res['JS']))

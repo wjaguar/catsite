@@ -5,7 +5,7 @@
  * Theme interaction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.2
+ * @version 0.9.3
  * @package catsite
  */
 
@@ -81,6 +81,10 @@ class CatsitePelt
 				'fill' => 'HEADER_IMAGE',
 				'kind' => 'lang',
 				'mod' => 'header_image',
+				],
+			'FAVICON' => [
+				'fill' => 'FAVICON',
+				'kind' => 'pair',
 				],
 		],
 		[ '@' => [ 'flixita', 'flixify' ],
@@ -577,8 +581,13 @@ class CatsitePelt
 		$this->mods = $mods; # To use in decoding
 #catsite_vardump('Mods', $this->mods);
 
-# FIXME Here, setup other kinds of substitution handlers (just as generic)
-
+		# Favicons need a specialized handler
+		if (isset($this->blocks['FAVICON']['value']))
+		{
+			$this->fav = $this->blocks['FAVICON']['value'];
+			ksort($this->fav, SORT_NUMERIC);
+			add_filter('get_site_icon_url', [ $this, 'get_favicon' ], PHP_INT_MAX, 3);
+		}
 	}
 
 	/**
@@ -778,5 +787,29 @@ class CatsitePelt
 		return $json ? json_encode($mod) : $mod;
 	}
 
+	/**
+	 * Favicon URLs sorted by size.
+	 *
+	 * @var   array
+	 * @since 0.9.3
+	 */
+	private $fav;
+
+	/**
+	 * Give one of favicon URLs: either matching by size, or absent that, for
+	 * size 512, the largest (WP uses that size to check favicon presence).
+	 *
+	 * @param  string $url  The WP's favicon URL.
+	 * @param  int    $size The requested size.
+	 * @param  int    $blog The blog ID (ignored).
+	 * @return string The icon URL, or empty string if no such thing.
+	 * @since  0.9.3
+	 */
+	public function get_favicon($url, $size, $blog)
+	{
+		if (($size === 512) && $this->fav && !isset($this->fav[512]))
+			return end($this->fav);
+		return $this->fav[$size] ?? '';
+	}
 
 }

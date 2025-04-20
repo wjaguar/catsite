@@ -3,7 +3,7 @@
  * Plugin Name:		catsite
  * Plugin URI:		https://github.com/wjaguar/catsite
  * Description:		This plugin provides component parts for a cat site
- * Version:		0.9.2
+ * Version:		0.9.3
  * Author:		wjaguar
  * Author URI:		https://github.com/wjaguar
  * License:		GPLv3 or later
@@ -62,7 +62,8 @@ if (defined('CATSITE_TIME_LOG')) add_action('shutdown',
 	function()
 	{
 		$d = microtime(true) - $_SERVER['REQUEST_TIME_FLOAT'];
-		error_log("Generation time: $d sec.\n", 3, CATSITE_TIME_LOG);
+		if ($_SERVER['REQUEST_URI'] !== '/favicon.ico') # If want pure page timings
+			error_log("Generation time: $d sec.\n", 3, CATSITE_TIME_LOG);
 	} );
 
 /**
