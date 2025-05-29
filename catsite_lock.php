@@ -5,7 +5,7 @@
  * Access restriction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.2
+ * @version 0.9.4
  * @package catsite
  */
 
@@ -130,7 +130,7 @@ class CatsiteLock
 	{
 #catsite_arrdump("_SERVER", $_SERVER);
 		$h = $_SERVER['HTTP_X_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
-		$ssl = is_ssl() || ($_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https');
+		$ssl = is_ssl() || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 		$port = $ssl ? 443 : 80;
 		$res = [];
 		if (preg_match('/:(\d+)$/', $h, $res)) $port = (int)$res[1];

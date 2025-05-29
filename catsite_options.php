@@ -5,7 +5,7 @@
  * Data exchange module.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.3
+ * @version 0.9.4
  * @package catsite
  */
 
@@ -302,6 +302,26 @@ class CatsiteOptions
 	public function errors()
 	{
 		return $this->err ?? [];
+	}
+
+	/**
+	 * Get the stored WP errors and warnings as plaintext.
+	 *
+	 * @param  array $tags Custom prefix strings for "error" and "warning".
+	 * @return array "Type: message" lines in UTF-8.
+	 * @since  0.9.4
+	 */
+	public function errors_plain($tags = null)
+	{
+		$tags = $tags ?? [ 'error' => 'Error: ', 'warning' => 'Warning: ' ];
+		$res = [];
+		foreach ($this->err ?? [] as $err)
+		{
+			$res[] = ($tags[$err[1]] ?? '') . 
+				html_entity_decode(strip_tags($err[0] ?? ''),
+					ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML401, 'UTF-8');
+		}
+		return $res;
 	}
 
 	/**

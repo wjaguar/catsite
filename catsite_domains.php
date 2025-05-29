@@ -5,7 +5,7 @@
  * Multiple domains handling, path parsing and reassembly.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.0
+ * @version 0.9.4
  * @package catsite
  */
 
@@ -87,9 +87,9 @@ class CatsiteDomains
 	private function host_header()
 	{
 #catsite_arrdump("_SERVER", $_SERVER);
-		$h = $_SERVER['HTTP_X_HOST'] ?? $_SERVER['HTTP_HOST'];
+		$h = $_SERVER['HTTP_X_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
 		if (empty($h)) return null;
-		$ssl = is_ssl() || ($_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https');
+		$ssl = is_ssl() || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
 		return ($ssl ? 'https://' : 'http://') . $h;
 	}
 

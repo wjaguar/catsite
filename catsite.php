@@ -3,7 +3,7 @@
  * Plugin Name:		catsite
  * Plugin URI:		https://github.com/wjaguar/catsite
  * Description:		This plugin provides component parts for a cat site
- * Version:		0.9.3
+ * Version:		0.9.4
  * Author:		wjaguar
  * Author URI:		https://github.com/wjaguar
  * License:		GPLv3 or later
@@ -62,8 +62,10 @@ if (defined('CATSITE_TIME_LOG')) add_action('shutdown',
 	function()
 	{
 		$d = microtime(true) - $_SERVER['REQUEST_TIME_FLOAT'];
-		if ($_SERVER['REQUEST_URI'] !== '/favicon.ico') # If want pure page timings
-			error_log("Generation time: $d sec.\n", 3, CATSITE_TIME_LOG);
+		$m = memory_get_peak_usage(true) / (float)(1024 * 1024);
+		$p = $_SERVER['REQUEST_URI'];
+		if ($p === '/favicon.ico') return; # If want pure page timings
+		error_log("$p : generated in $d sec. using $m Mb\n", 3, CATSITE_TIME_LOG);
 	} );
 
 /**
@@ -365,7 +367,12 @@ class Catsite
 		CatsitePelt::activate($opts); # Merely to collect the options
 		CatsiteJaws::activate($opts); # Merely to collect the options
 # !!! Add here any other classes that need activating, even only for options
-		$opts->set('errors', $opts->errors() ?: null);
+		if (defined('WP_CLI') && WP_CLI)
+		{
+			self::cli_errors($opts);
+			WP_CLI::log("Activation done.");
+		}
+		else $opts->set('errors', $opts->errors() ?: null);
 	}
 
 	/**
@@ -429,6 +436,7 @@ class Catsite
 		if (is_admin())
 		{
 			$this->set_filters(); # For admin stuff only
+			$opts->def("Stock")->admin_init();
 # !!! Add here any worker-configuration classes
 		}
 	}
@@ -518,6 +526,37 @@ class Catsite
 		}
 	}	
 
+	/**
+	 * Display the errors if any, in glorious color, on the console.
+	 *
+	 * @param  \CatsiteOptions $opts The values for various things.
+	 * @return void
+	 * @since  0.9.4
+	 */
+	private static function cli_errors($opts)
+	{
+		$err = $opts->errors_plain(
+			[ 'error' => '  %RError:%n ', 'warning' => '  %CWarning:%n ' ] );
+		if ($err) WP_CLI::log(WP_CLI::colorize("\n" . implode("\n", $err) . "\n"));
+	}
+
+	/**
+	 * Do the rescan action from CLI.
+	 *
+	 * @return void
+	 * @since  0.9.4
+	 */
+	public function cli_rescan()
+	{
+		$opts = $this->opts;
+		# Do the rescan and remember the errors
+		$opts->squeal();
+		$opts->def("Stock")::rescan($opts);
+# !!! Do other classes' rescan action if needed
+
+		self::cli_errors($opts);
+		WP_CLI::log("Rescan done.");
+	}
 
 }
 
@@ -535,6 +574,16 @@ add_filter('pre_update_option_active_plugins', [ Catsite::class, 'put_first' ], 
  * Initialize.
  */
 $catsite = Catsite::instance();
+
+/*
+ * Connect to WP-CLI
+ */
+if (defined('WP_CLI') && WP_CLI)
+{
+	WP_CLI::add_command('catsite rescan', [ $catsite, 'cli_rescan' ], [
+		'shortdesc' => "Rescans site files.",
+		] );
+}
 
 # Debug dump
 #catsite_arrlist('Observing: ', get_option('active_plugins'));

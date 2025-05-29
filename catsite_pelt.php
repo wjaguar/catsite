@@ -5,7 +5,7 @@
  * Theme interaction handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.3
+ * @version 0.9.4
  * @package catsite
  */
 
@@ -569,7 +569,7 @@ class CatsitePelt
 		# Setup theme mods / options / filters handlers
 		$hdl = [ $this, 'mod_array' ];
 		$mods = [];
-		foreach ($this->mods as $id)
+		foreach ($this->mods ?? [] as $id)
 		{
 			$arr = $this->blocks[$id];
 			$mod = isset($arr['mod']) ? 'theme_mod_' . $arr['mod'] :

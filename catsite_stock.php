@@ -5,7 +5,7 @@
  * Page files handling.
  *
  * @author  wjaguar <https://github.com/wjaguar>
- * @version 0.9.3
+ * @version 0.9.4
  * @package catsite
  */
 
@@ -714,7 +714,6 @@ class CatsiteStock
 	public static function activate($opts = null)
 	{
 		global $wp_rewrite;
-#		$test_rewrite = false;
 
 		$opts = CatsiteOptions::update($opts, self::$defaults);
 
@@ -726,19 +725,19 @@ class CatsiteStock
 		$opts->add('fill_info', []);
 		$opts->add('attached', []);
 
-		/* Set up proper permalinks */
-		if (!got_url_rewrite())
+		/* If we got us a webserver, see if it can rewrite URLs */
+		if (!(defined('WP_CLI') && WP_CLI) && !got_url_rewrite())
 		{
 			$opts->error("Catsite requires working rewrite engine");
 			return;
 		}
+		/* Set up proper permalinks */
 		$link = get_option('permalink_structure');
 		$wantlink = '/%postname%/';
 		if ($link !== $wantlink)
 		{
 			$wp_rewrite->set_permalink_structure($wantlink);
 			$wp_rewrite->flush_rules(true);
-#			$test_rewrite = true; # Wait for a page to try it on
 		}
 
 		/* Scan the files */
@@ -1407,6 +1406,44 @@ REDO:		$pages = [];
 
 		/* Let pseudo-attachments live anywhere at all*/
 		add_filter('wp_get_attachment_url', [ $this, 'fix_attach' ],  PHP_INT_MAX, 2);
+	}
+
+	/**
+	 * Add component extensions to the edit-allowed list.
+	 *
+	 * @param array  $types  Editable plugin file extensions.
+	 * @param string $plugin Relative (to the plugins dir) path to the plugin.
+	 * @return array Expanded array of editable extensions.
+	 * @since  0.9.4
+	 */
+
+	public function allow_exts($types, $plugin)
+	{
+		$opts = $this->opts->alldefs();
+		$ext = "_ext";
+		$l = strlen($ext);
+		foreach (self::$defaults as $key => $x)
+		{
+			if (substr($key, -$l) !== $ext) continue;
+			$v = $opts[$key] ?? null;
+			if (!isset($v)) continue;
+			if ($v[0] !== '.') continue; # Paranoia
+			array_push($types, substr($v, 1));
+		}
+		return $types;
+	}
+
+	/**
+	 * Initialize admin stuff.
+	 *
+	 * @return void
+	 * @since  0.9.4
+	 */
+
+	public function admin_init()
+	{
+		/* Let plugin editor edit the component files */
+		add_filter('editable_extensions', [ $this, 'allow_exts' ], PHP_INT_MAX, 2);
 	}
 
 	/**
